@@ -27,7 +27,7 @@ run_component_checks
 
 1. 重建同级 `Flight` 仓库的 Windows Host SIL 运行库。
 2. 重建本项目原生 MEX、生成参数字典和 Plant/Flight/Actuation 模型。
-3. 执行 `verify_flight_entries(true)`：运行 26 s 默认 MIL 闭环，刷新 `scenarios/flight_sil_recording.mat`，再执行 DataSIM 和 ExtINS DataSIM 回放。
+3. 执行 `verify_flight_entries(true)`：运行 34 s 默认 MIL 闭环，刷新 `scenarios/flight_sil_recording.mat`，再执行 DataSIM 和 ExtINS DataSIM 回放。
 4. 运行参数视图、OSQP、G1 执行拓扑、Plant 开环、传感器事件时序、TimeService、GNSS 失锁恢复、RECTIMEA、truth 隔离、PID 和执行器测试。
 5. 对代码、测试、配置、顶层 `.slx` 模型、回放数据和 MEX 产物计算 SHA-256 指纹，并检查测试过程中输入未发生变化。
 
@@ -58,7 +58,7 @@ run_component_checks('C:\STM32CubeCLT\mingw64\bin')
 |---|---|
 | 生成位置 | `tools/fmt_default_input.m` |
 | 入口 | `FMT_MILSIM` |
-| 时间网格 | 0～26 s，500 μs 固定步长 |
+| 时间网格 | 0～34 s，500 μs 固定步长 |
 | 命令 | 1=解锁，3=起飞至 2 m，4=降落，2=上锁 |
 | 命令行索引 | MATLAB 1-based 行索引 `[8400, 12000, 28000, 46000]`（4.2 s / 6.0 s / 14.0 s / 23.0 s） |
 | 预期任务 | 完成解锁、起飞、降落和上锁；不得在无有效提交许可时输出非零推力 |
@@ -137,7 +137,7 @@ Host SIL 的确定性调度器必须显式模拟 RTOS 信号量唤醒：Sensor �
 | 验收范围 | 执行入口/报告 | 当前分支接纳要求 |
 |---|---|---|
 | 构建和依赖 | `component_checks.json` | 所有构建步骤完成；异常必须 FAIL，不能继续使用旧产物 |
-| Flight 三入口及回放 | `flight_entries.json`、`mil_diagnostics.json`，并嵌入 `component_checks.json` | 报告 PASS；26 s MIL 完成任务，DataSIM/ExtINS 对比一致，缺测禁止推力；MIL 失败时必须保留逐命令 ACK 与 PreArm 诊断 |
+| Flight 三入口及回放 | `flight_entries.json`、`mil_diagnostics.json`，并嵌入 `component_checks.json` | 报告 PASS；34 s MIL 完成任务，DataSIM/ExtINS 对比一致，缺测禁止推力；MIL 失败时必须保留逐命令 ACK 与 PreArm 诊断 |
 | 参数一致性 | `parameter_view_report.json` | PASS；26 项 Plant、19 项 Sensor、54 项 SensorModel、10 项 SensorTiming 参数合同正确 |
 | Plant 开环 | `plant_open_loop_report.json` | `implemented_gate_status=PASS`，但整体 `status=PARTIAL` 是当前预期 |
 | 传感器事件队列 | `sensor_event_timing_report.json` | PASS；计数守恒、sequence gap 和时间因果关系正确 |
@@ -156,7 +156,7 @@ Host SIL 的确定性调度器必须显式模拟 RTOS 信号量唤醒：Sensor �
 
 Origin Reset 验收必须同时满足：GNSS candidate 已进入 runtime data；FMS `fms_authorize_origin_reset` 返回成功；INS `estimator_reset` 返回成功；随后导航有效位包含水平位置。 `FMT_MILSIM` 还必须证明初始 origin mask 为 `1`、INS 姿态对准后才放行首个 GNSS、首个 GNSS 被暂存为 late fix，Reset 后 origin mask 升至 `3` 且 origin ID 前进。仅有 candidate 或最终 PreArm 状态不足以证明授权链闭环。 M7 提交验收还必须在同一采样帧观察到 `PERMIT_SCOPE_CONTROL_ACTIVE` 且未置 `PERMIT_FLAG_REVOKED`、`ACTUATOR_RECEIPT_COMMITTED` 和 Host SIL `commit_valid=1`；仅有 Permit 位或单独的非零推力均不足以证明有效提交。
 
-Flight 入口诊断约定：`verify_flight_entries` 在 MIL 断言之前写出 `mil_diagnostics.json`，记录每条命令的 command code、request ID、ACK state/reason，以及对应时刻的 arm/mode/failsafe、PreArm state、failed mask、primary reason、failed count、check epoch 和 authority。Host SIL 状态帧宽度为 118；第 25～32 列依次为 PreArm failed mask、primary reason、failed count、warning count、check epoch、FMS authority、mission state、最近命令码；第 33～40 列依次为 FMS origin-reset 授权尝试数、成功数、最近授权状态码、INS reset 尝试数、成功数、最近 reset 状态码、reset type、requested origin ID。第 41～60 列记录 GNSS 仿真提交/估计器接收计数、pending-origin 查询状态、Sensor/Mission 调度次数、candidate 序号与时间有效期及最后候选年龄。第 61～74 列记录 MIL GNSS 放行状态/时刻、放行前抑制步数、首个 GNSS fix 序号/采样时刻、GNSS ingestion 各类返回计数、INS origin snapshot 状态/mask/ID，以及首个 Origin Candidate 的序号/采样时刻/年龄。第 75～108 列只在首次进入 `FAILSAFE_TERMINAL` 时锁存一份快照：终端时刻与 DecisionEvent、LandedState、ControlCapability/ControlHealth、ActuatorStatus/Capability、Permit、Guidance/Feasibility、导航能力、MPC 和 runtime 错误信息；第 109～113 列记录 ARM 请求提交瞬间的 PreArm state、failed mask、check epoch、提交时间和 request ID。第 114～118 列记录 M7 地面停止事务的固件证据：输出守卫接受的证书起点 `actuator_guard_ground_stop_start_us()`、守卫预测的施加时间上界、适配器首次观察到 `ACTUATOR_RECEIPT_ZERO_TARGET_APPLIED` 的时刻、该回执被观察到的样本数，以及`actuator_guard_state()`（0=DISARMED、4=SAFE_ACTION）。这些列只读固件自身的记账，不由提交推力反推；`verify_flight_entries` 用它们断言端到端链路：FMS 撤销 Permit → 守卫接受证书 → 有界 ramp → 零目标回执 → 守卫锁存 DISARMED → 不再输出推力。ARM 的 PreArm 断言必须使用请求提交时快照，不得错误地使用同一 FMS 更新完成后已被终端保护改变的 PreArm 状态。MIL 必须证明 ARM 时 PreArm READY 且零失败，并且在有效 M7 commit 前没有进入 `FAILSAFE_TERMINAL`。不得使用最后一条 DISARM ACK 代替 ARM ACK 诊断。
+Flight 入口诊断约定：`verify_flight_entries` 在 MIL 断言之前写出 `mil_diagnostics.json`，记录每条命令的 command code、request ID、ACK state/reason，以及对应时刻的 arm/mode/failsafe、PreArm state、failed mask、primary reason、failed count、check epoch 和 authority。Host SIL 状态帧宽度为 124；第 25～32 列依次为 PreArm failed mask、primary reason、failed count、warning count、check epoch、FMS authority、mission state、最近命令码；第 33～40 列依次为 FMS origin-reset 授权尝试数、成功数、最近授权状态码、INS reset 尝试数、成功数、最近 reset 状态码、reset type、requested origin ID。第 41～60 列记录 GNSS 仿真提交/估计器接收计数、pending-origin 查询状态、Sensor/Mission 调度次数、candidate 序号与时间有效期及最后候选年龄。第 61～74 列记录 MIL GNSS 放行状态/时刻、放行前抑制步数、首个 GNSS fix 序号/采样时刻、GNSS ingestion 各类返回计数、INS origin snapshot 状态/mask/ID，以及首个 Origin Candidate 的序号/采样时刻/年龄。第 75～108 列只在首次进入 `FAILSAFE_TERMINAL` 时锁存一份快照：终端时刻与 DecisionEvent、LandedState、ControlCapability/ControlHealth、ActuatorStatus/Capability、Permit、Guidance/Feasibility、导航能力、MPC 和 runtime 错误信息；第 109～113 列记录 ARM 请求提交瞬间的 PreArm state、failed mask、check epoch、提交时间和 request ID。第 114～118 列记录 M7 地面停止事务的固件证据：输出守卫接受的证书起点 `actuator_guard_ground_stop_start_us()`、守卫预测的施加时间上界、适配器首次观察到 `ACTUATOR_RECEIPT_ZERO_TARGET_APPLIED` 的时刻、该回执被观察到的样本数，以及`actuator_guard_state()`（0=DISARMED、4=SAFE_ACTION）。第 119～124 列记录着陆过程证据：FMS `LandedState.state`（0=UNKNOWN、1=LANDED、2=IN_AIR、3=TAKEOFF、4=LANDING）、`stable_duration_ms`、`evidence_mask`、`confidence_0_to_1`、Plant 接地状态（0=UNKNOWN、1=CONTACT、2=NO_CONTACT）与 FMS 制导模式码。`verify_flight_entries` 用它们断言 LANDED 状态与 2 s 驻留真实出现、Plant 确有接地，并在 `flight_entries.json` 记录 touchdown 与 dwell 达成时刻；不得只用高度和速度推断已着陆。这些列只读固件自身的记账，不由提交推力反推；`verify_flight_entries` 用它们断言端到端链路：FMS 撤销 Permit → 守卫接受证书 → 有界 ramp → 零目标回执 → 守卫锁存 DISARMED → 不再输出推力。ARM 的 PreArm 断言必须使用请求提交时快照，不得错误地使用同一 FMS 更新完成后已被终端保护改变的 PreArm 状态。MIL 必须证明 ARM 时 PreArm READY 且零失败，并且在有效 M7 commit 前没有进入 `FAILSAFE_TERMINAL`。不得使用最后一条 DISARM ACK 代替 ARM ACK 诊断。
 
 ## 5. Plant 数值验收阈值
 
@@ -204,7 +204,7 @@ Flight 入口诊断约定：`verify_flight_entries` 在 MIL 断言之前写出 `
 2. OSQP 当前验证的是独立 MEX 已知最优值和 KKT，不等于 MPC 模型中的 QP 组装、严格候选门限和实际控制周期全部验证。
 3. G1 gate 验证执行拓扑和节拍，不等于三入口完整 FMS/Guidance/Control 的所有系统状态覆盖。
 4. PID 与执行器报告中的 `NOT_RUN` 项仍是未验收项目，不能只看报告顶层 PASS。
-5. Flight 三入口当前集成验收为 26 s 默认任务，不等于旧版系统规格中所有 30 s、故障矩阵、MPC RMS 和覆盖率要求均已实现。
+5. Flight 三入口当前集成验收为 34 s 默认任务，不等于旧版系统规格中所有 30 s、故障矩阵、MPC RMS 和覆盖率要求均已实现。
 6. 当前所有结果仅是 PC MATLAB/Simulink + Windows Host SIL/SIM_ONLY 模型验证，不构成 MCU 实时性、PIL/HIL、传感器实物标定或实飞放行。
 
 正常情况下不要再分别复制 MATLAB 和归档命令；在 Flight_Matlab 根目录只执行一次：

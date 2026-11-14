@@ -92,7 +92,13 @@ def check_run(run):
 
     # M6: the verdict must follow from the numbers, not from a separate flag.
     m6 = load(run, 'm6_report.json')
-    if m6 is not None and m6.get('jobs', 0) > 0:
+    if m6 is not None and m6.get('status') == 'FAIL' and m6.get('error'):
+        # The gate aborted before it could publish coverage; the only claim that
+        # can still be checked is that it did not claim a PASS.
+        expect('M6 gate that aborted claims no PASS',
+               m6.get('coverage_90') != 'PASS' and m6.get('minimum_jobs_100') != 'PASS',
+               str(m6.get('error', {}).get('identifier')))
+    elif m6 is not None and m6.get('jobs', 0) > 0:
         covered = None
         stats = load(run, 'm6_runtime_stats_mil.json')
         if stats is not None and 'covered_us' in stats:
