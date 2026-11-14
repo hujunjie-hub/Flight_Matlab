@@ -312,7 +312,7 @@
     "middleware/guidance/trajectory_planning/m5_trajectory_safety.c": "9c93cc6600336786d18bf9fcec68be0db8eaf715dcc4cf9257629de83f66738e",
     "middleware/guidance/trajectory_planning/m5_trajectory_safety.h": "4280f890142dd0608bc1c744a31ea43f4dc35a587e02333cd5cbfb61d4325830",
     "middleware/guidance/trajectory_planning/minimum_jerk_optimizer.c": "8a7e1984b707e6f13ce3e803b51e5d7965ef080f09ecf13b8956838ea48ad189",
-    "middleware/guidance/trajectory_planning/mission_trajectory.c": "e6eaf93319ed4c031aeb357c9778ba21b2e6e4fe80f175aa5cd46e81dd3d7518",
+    "middleware/guidance/trajectory_planning/mission_trajectory.c": "801ad3a7fb3dfb46aa5919347387d08b6cdf83450723428266cae59f1c957d2b",
     "middleware/guidance/trajectory_planning/trajectory_math.c": "a78f9740c7f08bc12c13ca4422c149567c204afb2d34441d724bdcfedbab9872",
     "middleware/guidance/trajectory_planning/trajectory_validation.c": "681f6e9eb7ac4a50fb1dbb69a9a6660c482b1689d8a9ea87ab55ac96d793c34d",
     "middleware/model/control/control_backend.h": "448bcc1992875cfa27ad6923e0048cec2908e895b22370bb2bcb6af77cc38753",
