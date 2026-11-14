@@ -34,7 +34,7 @@
       "model": "FMT_MILSIM",
       "time_grid": {
         "start_s": 0,
-        "stop_s": 26,
+        "stop_s": 34,
         "step_us": 500
       },
       "command_rows_matlab_1_based": [
@@ -65,7 +65,7 @@
           "meaning": "lock request"
         }
       ],
-      "acceptance": "26 s MIL completes FMS-authorized late-GNSS origin rebuild, ARM, valid CONTROL_ACTIVE permit and committed M7 output, takeoff/landing/disarm; no terminal failsafe before valid commit and no nonzero thrust without valid commit.",
+      "acceptance": "34 s MIL completes FMS-authorized late-GNSS origin rebuild, ARM, valid CONTROL_ACTIVE permit and committed M7 output, takeoff/landing/disarm; no terminal failsafe before valid commit and no nonzero thrust without valid commit.",
       "mil_origin_profile": {
         "initial_origin_valid_mask": 1,
         "complete_origin_valid_mask": 3,
@@ -350,7 +350,7 @@
       "id": "FLIGHT-ENTRIES",
       "report": "flight_entries.json",
       "expected": "PASS",
-      "scope": "26 s MIL + DataSIM/ExtINS replay + sensor dropout inhibition"
+      "scope": "34 s MIL + DataSIM/ExtINS replay + sensor dropout inhibition"
     },
     {
       "id": "PARAMETERS",

@@ -2,13 +2,19 @@ function ds = fmt_default_input(entry)
 %FMT_DEFAULT_INPUT Load the default recording or create the MIL command tape.
 root = fileparts(fileparts(mfilename('fullpath')));
 if strcmp(entry,'FMT_MILSIM')
-    t = (0:0.0005:26)';
+    % The closing descent of the bounded landing profile is slower than the
+    % approach it replaced (horizontal braking is finished before the final
+    % descent), so the scenario horizon must cover touchdown plus the unchanged
+    % 2 s LANDED dwell before DISARM can be accepted. Measured on Flight
+    % 547f3788: touchdown 26.5 s, LANDED dwell satisfied 31.5 s, DISARM accepted
+    % 32.0 s. The horizon and the DISARM pulse moved; no threshold did.
+    t = (0:0.0005:34)';
     commands = zeros(numel(t),2);
     % Each command is a one-tick pulse. Submit after the same upstream owner turns.
     % ARM completes only after the 2 s ground-confirmation dwell has declared
     % LANDED, and TAKEOFF must be accepted while that LANDED evidence still
     % holds; the pulses are spaced so both preconditions are satisfied.
-    ticks = [8400 12000 28000 50000];
+    ticks = [8400 12000 28000 64000];
     commands(ticks,:) = [1 0; 3 2; 4 0; 2 0];
     ds = Simulink.SimulationData.Dataset;
     ds{1} = sample(t,commands);

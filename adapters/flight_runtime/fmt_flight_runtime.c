@@ -1230,7 +1230,16 @@ __declspec(dllexport) int fmt_flight_step(const double *s, const double *command
         (double)actuator_guard_ground_stop_predicted_us(),
         (double)first_zero_target_receipt_us,
         (double)zero_target_receipt_observations,
-        (double)actuator_guard_state()
+        (double)actuator_guard_state(),
+        /* Landing-progress evidence (FMAT-0008/FMAT-0013). Without these the
+         * final DISARM rejection cannot be attributed to a specific detector
+         * input, and only the latched terminal snapshot would be available. */
+        (double)fms_output.landed_state.state,
+        (double)fms_output.landed_state.stable_duration_ms,
+        (double)fms_output.landed_state.evidence_mask,
+        (double)fms_output.landed_state.confidence_0_to_1,
+        (double)flight_sil_ground_contact(),
+        (double)fms_output.directive.guidance_mode_code
     };
     memcpy(status, values, sizeof(values));
     NavFrame published = {0};

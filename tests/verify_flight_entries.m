@@ -26,7 +26,7 @@ if isfile(p10bHoldover)
     copyfile(p10bHoldover,fullfile(root,'work','validation','p10b_holdover_mil.json'));
 end
 s = signal(closed,2);
-assert(size(s,2)==118,'Flight:MILStatusABI','Expected the 118-column Host SIL diagnostic ABI.');
+assert(size(s,2)==124,'Flight:MILStatusABI','Expected the 124-column Host SIL diagnostic ABI.');
 force = signal(closed,1);
 x = signal(closed,4);
 fprintf('MIL max altitude %.3f m, final down %.3f m, final velocity %.3f m/s\n', ...
@@ -198,6 +198,13 @@ milDiagnostics=struct('scope','MIL_COMMAND_AND_PREARM_DIAGNOSTICS', ...
     'first_zero_target_receipt_us',uint64(s(end,116)), ...
     'zero_target_receipt_observations',uint32(s(end,117)), ...
     'final_actuator_guard_state',uint32(s(end,118)), ...
+    'final_landed_state',uint32(s(end,119)), ...
+    'maximum_landed_stable_ms',uint32(max(s(:,120))), ...
+    'landed_state_seen_mask',state_mask(s(:,119)), ...
+    'maximum_landed_evidence_mask',uint32(max(s(:,121))), ...
+    'ground_contact_seen',any(s(:,123)==1), ...
+    'final_ground_contact',uint32(s(end,123)), ...
+    'final_guidance_mode_code',uint32(s(end,124)), ...
     'control_permit_seen',any(controlPermitValid), ...
     'committed_receipt_seen',any(committedReceipt), ...
     'valid_m7_commit_seen',any(validM7Commit), ...
@@ -268,6 +275,29 @@ assert(s(end,3)==0 && s(end,10)==3 && norm(x(end,4:6))<.15 && abs(x(end,3))<.1, 
     'Flight:MILLanding','The simulated flight did not land and disarm.');
 assert(all(s(:,24)==0),'Flight:FirmwareSIL','Flight host fixture checks failed.');
 
+% Landing-detector evidence. The final DISARM can only be accepted after FMS has
+% proven LANDED for its configured dwell, so the MIL must show that the detector
+% actually reached that state instead of inferring it from the altitude alone.
+landedState=s(:,119);
+landedStableMs=s(:,120);
+rowIndex=(1:size(s,1))';
+[~,peakRow]=max(-x(:,3));
+% The vehicle starts parked on the ground, so only contacts after the peak of
+% the flight are landings; the pre-takeoff dwell is not a landing milestone.
+touchdownRow=find(rowIndex>peakRow & s(:,123)==1,1,'first');
+landedDwellRow=find(rowIndex>peakRow & landedState==1 & landedStableMs>=2000,1,'first');
+if ~isempty(touchdownRow), touchdownUs=s(touchdownRow,1); else, touchdownUs=0; end
+if ~isempty(landedDwellRow), landedDwellUs=s(landedDwellRow,1); else, landedDwellUs=0; end
+assert(any(landedState==1),'Flight:MILLandedState', ...
+    ['FMS never reported LANDED (states seen: 0x%X, max stable %d ms, max ' ...
+     'evidence 0x%X); the flight cannot be disarmed on a proven ground contact.'], ...
+    state_mask(landedState),max(landedStableMs),uint32(max(s(:,121))));
+assert(max(landedStableMs(landedState==1))>=2000,'Flight:MILLandedDwell', ...
+    'FMS LANDED never reached the 2 s dwell (max %d ms).',max(landedStableMs(landedState==1)));
+assert(any(s(:,123)==1),'Flight:MILGroundContact', ...
+    ['The Plant never reported ground contact, so the LANDED dwell could not ' ...
+     'be corroborated by a physical touchdown.']);
+
 % M7 ground stop end-to-end (FMAT-0013). The certificate is produced by the real
 % FMS task from the real DISARM decision, routed through ControlBundle, accepted
 % by the real output guard, ramped to zero on real frame boundaries and only then
@@ -277,7 +307,8 @@ assert(all(s(:,24)==0),'Flight:FirmwareSIL','Flight host fixture checks failed.'
 armedRows=find(s(:,3)==2);
 assert(~isempty(armedRows),'Flight:MILArm','MIL never entered the armed state.');
 lastArmedRow=armedRows(end);
-disarmRows=find(s(:,3)==0 & (1:numel(s))'>lastArmedRow);
+rowIndex=(1:size(s,1))';
+disarmRows=find(s(:,3)==0 & rowIndex>lastArmedRow);
 assert(~isempty(disarmRows),'Flight:M7DisarmState', ...
     'FMS never returned to DISARMED after being ARMED.');
 disarmRow=disarmRows(1);
@@ -377,7 +408,9 @@ report = struct('status','PASS','duration_s',closed.tout(end), ...
     'external_navigation_control_identical',true,'invalid_sensors_inhibit',true, ...
     'ground_stop_start_us',s(end,114),'ground_stop_predicted_us',budgetUs, ...
     'zero_target_receipt_us',s(end,116),'ground_stop_ramp_us',rampUs, ...
-    'ground_stop_transaction','PASS');
+    'ground_stop_transaction','PASS', ...
+    'touchdown_time_us',touchdownUs,'landed_dwell_time_us',landedDwellUs, ...
+    'landed_state_seen_mask',state_mask(landedState));
 file = fopen(fullfile(root,'work','validation','flight_entries.json'),'w');
 cleanup = onCleanup(@()fclose(file));
 fprintf(file,'%s\n',jsonencode(report,PrettyPrint=true));
@@ -385,7 +418,7 @@ disp(report);
 end
 
 function out = run(model,ds,stop)
-if nargin < 3, stop = '26'; end
+if nargin < 3, stop = '34'; end
 input = Simulink.SimulationInput(model);
 input = input.setExternalInput(ds);
 input = input.setModelParameter('StopTime',stop);
@@ -395,6 +428,16 @@ end
 
 function data = signal(out,port)
 data = out.yout{port}.Values.Data;
+end
+
+function mask = state_mask(values)
+%STATE_MASK OR together every distinct small enum value observed in a column.
+mask = uint32(0);
+for value = unique(values(:))'
+    if isfinite(value) && value >= 0 && value < 32 && value == floor(value)
+        mask = bitor(mask, bitshift(uint32(1), value));
+    end
+end
 end
 
 
