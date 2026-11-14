@@ -9,7 +9,15 @@ import sys
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """Content digest that ignores the checkout's line endings.
+
+    Flight pins ``* text=auto eol=lf`` in ``.gitattributes`` but a Windows clone
+    with ``core.autocrlf=true``, an archive export or a third-party editor can
+    still hand this project CRLF bytes for the same revision.  The locked input
+    is the source content, so the digest is taken over canonical LF and the
+    manifest declares the rule; ``verify_inputs.py`` applies the same rule.
+    """
+    return hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
 
 
 def define(path, name):
@@ -35,6 +43,7 @@ def main(project, flight, build, dll):
                             define(version, "CONTRACT_SCHEMA_MINOR")],
         "product_contract_revision": f"{define(product, 'PRODUCT_CONTRACT_REVISION'):#010x}",
         "navigation_frame_bytes": lib.fmt_flight_nav_width(),
+        "sources_hash_newlines": "canonical LF",
         "sources_sha256": {p.relative_to(flight).as_posix(): digest(p)
                            for p in sorted(set(paths))},
     }

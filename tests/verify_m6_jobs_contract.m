@@ -66,21 +66,43 @@ badSchema.schema='legacy-unversioned';
 write_fixture(validation,badSchema,records);
 expect_failure(tempRoot,'FAIL');
 
+% The judged coverage is the 1 kHz consumer ratio: missing counters cannot be
+% trusted, impossible counters must be rejected and a PD fallback share above
+% 10 % must fail even when every aggregate counter looks healthy.
+noConsumer=rmfield(stats,'consumer');
+write_fixture(validation,noConsumer,records);
+expect_failure(tempRoot,'FAIL');
+
+impossibleConsumer=stats;
+impossibleConsumer.consumer.used=impossibleConsumer.consumer.samples+1;
+write_fixture(validation,impossibleConsumer,records);
+expect_failure(tempRoot,'FAIL');
+
+fallbackHeavy=stats;
+fallbackHeavy.consumer.used=round(0.89*fallbackHeavy.consumer.samples);
+write_fixture(validation,fallbackHeavy,records);
+expect_failure(tempRoot,'FAIL');
+
 report=struct('scope','M6_JOB_EVIDENCE_CONTRACT','status','PASS', ...
     'valid_100_job_fixture','PASS','zero_job_not_run','PASS', ...
     'missing_record_rejected','PASS','counter_mismatch_rejected','PASS', ...
     'aggregate_outcome_mismatch_rejected','PASS','invalid_job_id_rejected','PASS', ...
     'covered_time_mismatch_rejected','PASS', ...
-    'coverage_overflow_rejected','PASS','legacy_schema_rejected','PASS');
+    'coverage_overflow_rejected','PASS','legacy_schema_rejected','PASS', ...
+    'missing_consumer_counters_rejected','PASS', ...
+    'impossible_consumer_counters_rejected','PASS', ...
+    'consumer_coverage_below_90_rejected','PASS');
 disp(report);
 end
 
 function [stats,records]=valid_fixture(jobCount)
 if nargin<1, jobCount=100; end
 coveredUs=jobCount*20000;
+consumer=struct('samples',10000,'used',9500,'backup_expired',500);
 stats=struct('schema','fmat-m6-runtime-stats/1.0', ...
     'jobs',jobCount,'solved',jobCount,'rejected',0,'covered_us',coveredUs, ...
-    'job_record_count',jobCount,'worker_ticks',jobCount+5,'blocked_mode',0);
+    'job_record_count',jobCount,'worker_ticks',jobCount+5,'blocked_mode',0, ...
+    'consumer',consumer);
 record=struct('job',0,'outcome',0,'solver_status',1, ...
     'prim_res',1e-4,'dual_res',1e-4,'primal_violation',0, ...
     'thrust_excess_n',0,'sample_us',1000,'eval_us',2000,'expires_us',25000);

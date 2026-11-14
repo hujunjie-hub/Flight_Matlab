@@ -52,7 +52,9 @@
 
 - 合格 job 数（`solver_status ∈ {SOLVED, SOLVED_INACCURATE}` 且通过严格校验）≥100；
 - 成功率 = 合格 / 总求解 ≥99%；
-- 时间加权覆盖率 = 有效 MPC 周期时长 / 闭环时长 ≥90%（PD fallback 空窗必须计入分母，不得剔除）。
+- 覆盖率 = 有效 MPC 消费点 / **全部 1 kHz 控制消费点** ≥90%（PD fallback 期间的控制点计入分母，不得剔除）。
+
+> **分母口径已裁定（2026-11-15，Issue #12 决策 A）。** 原文"有效 MPC 周期时长 / 闭环时长"与实现所用的"整轮 26 s"不等价：MPC worker 只在制导处于轨迹模式时才能求解，`blocked_mode` 使整轮分母的数学上限只有 57.8%，任何实现都不可能达到 90%。现改为直接测量控制路径由 MPC 接管的比例，即运行时 `consumer_stats.used / consumer_stats.samples`（1 kHz 每次控制评估都 `samples++`，任一 fallback 条款成立才走 PD 且不计 `used`）。分母随闭环实际控制点数增长，PD 回退必然计入分母；90%/99%/≥100 三项阈值与残差门限均未降低。整轮 26 s 与 worker 可用窗口两个口径保留为 `coverage_basis` 诊断值，不参与判定。
 
 现状：`flight_entries.json` 只有 `mpc_updates` 计数，没有状态分布。需要在 Flight 侧给 M6 增加一个只读诊断计数器（按 status 分桶 + 累计空窗时长），由 runtime 输出，MATLAB 记录到 `m6_report.json`。
 

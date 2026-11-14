@@ -1,0 +1,10 @@
+# Line-ending policy for this project.
+#
+# The acceptance evidence binds source identity to SHA-256 digests recorded in
+# config/flight_baseline.json, external_dependencies.lock.json and
+# config/dependency_history/. Those digests are computed over the working tree,
+# so the working tree must not depend on the machine's git configuration:
+# Windows Git defaults to core.autocrlf=true, which would rewrite every file to
+# CRLF on a fresh clone and invalidate every recorded digest without a single
+# source change. Pin LF in the working tree, matching ../Flight's policy.
+* text=auto eol=lf

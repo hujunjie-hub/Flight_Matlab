@@ -12,6 +12,7 @@
 #include "calibration/sensor_calibration.h"
 #include "sample_normalization/sensor_sample.h"
 #include "mpc_diagnostics.h"
+#include "output_guard/actuator_guard.h"
 
 /* The firmware time service derives monotonic time from this source. */
 static Status host_tick_source(uint64_t *tick64, uint32_t *time_epoch)
@@ -140,6 +141,10 @@ static uint32_t first_terminal_nav_solution_state, first_terminal_nav_valid_mask
 static uint32_t first_terminal_bundle_ready;
 static uint32_t arm_prearm_state_at_submit, arm_prearm_failed_mask_at_submit;
 static uint32_t arm_prearm_epoch_at_submit, arm_request_id;
+/* M7 ground-stop transaction evidence (FMAT-0013). The start/predicted times are
+ * the real output guard's accounting, not a re-derivation from the demand. */
+static uint64_t first_zero_target_receipt_us;
+static uint32_t zero_target_receipt_observations;
 
 static int external_mode(void);
 
@@ -706,6 +711,8 @@ __declspec(dllexport) int fmt_flight_start(int mode)
     first_terminal_bundle_ready = 0u;
     arm_prearm_state_at_submit = arm_prearm_failed_mask_at_submit = 0u;
     arm_prearm_epoch_at_submit = arm_request_id = 0u;
+    first_zero_target_receipt_us = 0u;
+    zero_target_receipt_observations = 0u;
     gnss_submit_attempts = gnss_submit_successes = 0u;
     gnss_submit_last_status = 0;
     gnss_push_attempts = gnss_push_successes = 0u;
@@ -1110,6 +1117,14 @@ __declspec(dllexport) int fmt_flight_step(const double *s, const double *command
     const int permitted = current_commit();
     for (unsigned i = 0; i < 4; ++i)
         force[i] = permitted ? runtime_data.receipt.committed_demand.motor_thrust_n[i] : 0.0;
+    /* Latch the first observed zero-target receipt and count how many samples
+     * keep it, so the MIL can prove the receipt is a real guard outcome rather
+     * than a one-step glitch. */
+    if (runtime_data.receipt.result_code == ACTUATOR_RECEIPT_ZERO_TARGET_APPLIED) {
+        if (first_zero_target_receipt_us == 0u)
+            first_zero_target_receipt_us = test_clock.monotonic_us;
+        ++zero_target_receipt_observations;
+    }
     const NavStateCore *nav = &runtime_data.nav.core;
     NavigationOriginSnapshot origin_snapshot = {0};
     Status origin_snapshot_status = estimator_get_origin(&origin_snapshot);
@@ -1210,7 +1225,12 @@ __declspec(dllexport) int fmt_flight_step(const double *s, const double *command
         arm_prearm_failed_mask_at_submit,
         arm_prearm_epoch_at_submit,
         arm_submit_time_us,
-        arm_request_id
+        arm_request_id,
+        (double)actuator_guard_ground_stop_start_us(),
+        (double)actuator_guard_ground_stop_predicted_us(),
+        (double)first_zero_target_receipt_us,
+        (double)zero_target_receipt_observations,
+        (double)actuator_guard_state()
     };
     memcpy(status, values, sizeof(values));
     NavFrame published = {0};

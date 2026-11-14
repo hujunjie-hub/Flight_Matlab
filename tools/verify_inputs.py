@@ -11,23 +11,41 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def sha_canonical_lf(path):
+    """Hash text after normalising every line ending to LF.
+
+    Flight pins ``* text=auto eol=lf`` in ``.gitattributes``, but the same
+    revision can still reach this project as CRLF bytes (older clone, archive
+    export, editor).  The locked identity is the source content, not the
+    checkout's line endings, so both the baseline recorder and this verifier
+    declare and apply ``canonical LF``.
+    """
+    return hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+
+
+def declared_sha(path, mode):
+    if mode == 'canonical CRLF':
+        return sha_canonical_crlf(path)
+    if mode == 'canonical LF':
+        return sha_canonical_lf(path)
+    return sha(path)
+
+
+def git_blob_sha1(content):
+    """Git object id for a blob, including the NUL-terminated object header."""
+    header = b'blob ' + str(len(content)).encode('ascii') + bytes((0,))
+    return hashlib.sha1(header + content).hexdigest()
+
+
 def sha_canonical_crlf(path):
     """Hash text after normalising every line ending to CRLF.
 
-    Flight's OSQP runtime lock declares ``"hash_newlines": "canonical CRLF"``:
-    the recorded digests must not depend on the checkout's core.autocrlf
-    setting, which is why the same generated header hashed to a different value
-    before and after the upstream normalisation commit.  Only the declared mode
-    is applied; anything else keeps the raw byte hash.
+    Flight's OSQP source lock is hashed over canonical CRLF bytes so the
+    recorded digest cannot depend on the checkout's line endings.  Only a
+    declared mode is applied; anything else keeps the raw byte hash.
     """
     data = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
     return hashlib.sha256(data).hexdigest()
-
-
-def runtime_sha(path, runtime):
-    if runtime.get('hash_newlines') == 'canonical CRLF':
-        return sha_canonical_crlf(path)
-    return sha(path)
 
 
 def unique_object(pairs):
@@ -97,11 +115,15 @@ def main():
     try:
         lock = read(ROOT / 'external_dependencies.lock.json')
         flight = ROOT.parent / 'Flight'
+        header_mode = lock.get('headers_hash_newlines')
         for name, digest in lock['headers'].items():
-            assert sha(flight / name) == digest, f'Production header changed: {name}'
+            assert declared_sha(flight / name, header_mode) == digest, \
+                f'Production header changed: {name}'
         baseline = read(ROOT / 'config/flight_baseline.json')
+        source_mode = baseline.get('sources_hash_newlines')
         for name, digest in baseline['sources_sha256'].items():
-            assert sha(flight / name) == digest, f'Flight baseline changed: {name}'
+            assert declared_sha(flight / name, source_mode) == digest, \
+                f'Flight baseline changed: {name}'
         for required in ('sensor_device/time_base/systime.c',
                          'sensor_device/time_base/systime.h',
                          'tests/time/test_time_service.c',
@@ -133,12 +155,41 @@ def main():
 
         osqp = (ROOT / lock['osqp']['root']).resolve()
         runtime = read(osqp / 'UPSTREAM_LOCK.json')
-        assert (sha(osqp / 'UPSTREAM_LOCK.json') == lock['osqp']['runtime_lock_sha256'] or
-                sha_canonical_crlf(osqp / 'UPSTREAM_LOCK.json') ==
+        # Flight's OSQP source lock is schema 2: file identity is the Git blob
+        # object id of the embedded bytes, not a SHA-256 of the generated file,
+        # and every entry declares how it was produced.  Mirror the upstream
+        # verifier instead of trusting the recorded digests alone.
+        assert (declared_sha(osqp / 'UPSTREAM_LOCK.json',
+                             lock['osqp'].get('runtime_lock_hash_newlines')) ==
                 lock['osqp']['runtime_lock_sha256']), 'OSQP runtime lock changed'
-        for name, digest in runtime['files'].items():
-            assert runtime_sha(osqp / 'generated' / name, runtime) == digest, \
-                f'OSQP runtime changed: {name}'
+        assert (runtime.get('schema_version') == 2 and
+                runtime.get('hash_algorithm') == 'git-blob-sha1'), \
+            'Unsupported OSQP source-lock schema or hash algorithm'
+        assert git_blob_sha1(b'abc') == 'f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f', \
+            'Git blob SHA-1 self-test failed'
+        generated = osqp / 'generated'
+        host_only = set(runtime.get('host_only_files') or [])
+        locked = set(runtime['files'])
+        actual = {path.relative_to(generated).as_posix() for path in generated.rglob('*')
+                  if path.is_file() and path.suffix not in {'.o', '.su'} and
+                  path.relative_to(generated).as_posix() not in host_only}
+        assert actual == locked, (
+            'OSQP embedded file set mismatch; '
+            f'missing={sorted(locked - actual)}, unexpected={sorted(actual - locked)}')
+        for name, entry in sorted(runtime['files'].items()):
+            digest = git_blob_sha1((generated / name).read_bytes())
+            assert digest == entry.get('git_blob_sha1'), f'OSQP runtime changed: {name}'
+            provenance = entry.get('provenance')
+            if provenance == 'upstream':
+                assert entry.get('upstream', {}).get('blob_sha1') == digest, \
+                    f'Upstream OSQP file differs from pinned source: {name}'
+            elif provenance == 'local_patch':
+                assert entry.get('upstream', {}).get('blob_sha1') and entry.get('patch_summary'), \
+                    f'Incomplete local patch provenance: {name}'
+            elif provenance == 'generated':
+                assert entry.get('generator'), f'Missing generator provenance: {name}'
+            else:
+                assert False, f'Unknown OSQP provenance for {name}: {provenance!r}'
         assert len(runtime['files']) == lock['osqp']['verified_files'], \
             'OSQP runtime lock does not cover the expected file count'
         kf = ROOT / lock['kf_gins_matlab']['path']

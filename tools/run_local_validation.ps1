@@ -330,6 +330,10 @@ $diaryPath = (Join-Path $validationRoot 'matlab_acceptance_diary.txt').Replace('
 $matlabScriptPath = Join-Path $env:TEMP ("flight_matlab_acceptance_" + [Guid]::NewGuid().ToString('N') + '.m')
 $matlabScript = @"
 cd('$matlabRoot');
+% A fresh -batch session has no project path, and every entry point of this
+% project lives in tools/. Add it explicitly so the one-key command does not
+% depend on a previously opened Flight_Matalab.prj or on a saved MATLAB path.
+addpath(fullfile('$matlabRoot', 'tools'));
 reportDir = fullfile('$matlabRoot', 'work', 'validation');
 if ~isfolder(reportDir)
     mkdir(reportDir);

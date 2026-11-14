@@ -104,15 +104,25 @@ def check_run(run):
         expect('M6 success rate equals solved/jobs',
                close(m6['success_rate'], m6['solved'] / m6['jobs'], 1e-12),
                f"{m6['success_rate']:.6f}")
+        consumer = (stats or {}).get('consumer') or {}
+        if consumer.get('samples'):
+            expect('M6 judged coverage equals consumer used/samples',
+                   close(m6.get('consumer_coverage'),
+                         min(1, consumer['used'] / consumer['samples']), 1e-12),
+                   f"{m6.get('consumer_coverage')}")
         expect('M6 verdict matches its thresholds',
                (m6['status'] == 'PASS') ==
-               (m6['jobs'] >= 100 and m6['success_rate'] >= 0.99 and m6['time_weighted_coverage'] >= 0.90),
+               (m6['jobs'] >= 100 and m6['success_rate'] >= 0.99 and
+                m6.get('consumer_coverage', 0) >= 0.90),
                m6['status'])
         basis = m6.get('coverage_basis', {})
         if basis:
-            expect('M6 gate denominator is the whole run',
-                   basis.get('gate_denominator', '').startswith('whole run'),
+            expect('M6 gate denominator is the 1 kHz consumer points',
+                   basis.get('gate_denominator', '').startswith('1 kHz control consumer points'),
                    str(basis.get('gate_denominator')))
+            expect('M6 keeps PD fallback in the judged denominator',
+                   m6.get('fallback_counted_as_uncovered') is True,
+                   str(m6.get('fallback_counted_as_uncovered')))
         evidence = m6.get('evidence', {})
         if evidence.get('record_count'):
             total = sum(evidence['stage_counts'].values())

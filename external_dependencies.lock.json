@@ -3,6 +3,7 @@
   "status": "PASS",
   "implementation": "FLIGHT_FIRMWARE_HOST_SIL",
   "firmware_equivalent": false,
+  "headers_hash_newlines": "canonical LF",
   "headers": {
     "middleware/contracts/base_types/common_base.h": "b28c37f625060e249254f4140a17668279baa86b9899a87511ee459a17b89102",
     "middleware/contracts/base_types/contract_version.h": "6c1a2aaef949e6b9441a0f4044f2df41352ccc0953b8918abe95db29318b5df5",
@@ -34,6 +35,8 @@
         }
       }
     },
+    "runtime_lock_hash_newlines": "canonical CRLF",
+    "source_lock_schema_version": 2,
     "runtime_lock_sha256": "91e6b16fbd39a1f8e407bb9056d82adbea192b45f2673e5855377b2c94cde37e",
     "verified_files": 42,
     "archive_sha256": "dd6a1c2e7e921485697d5e7cdeeb043c712526c395b3700601f51d472a7d8e48"
