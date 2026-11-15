@@ -56,13 +56,19 @@ def check_run(run):
            manifest['component_status'] in {'PASS', 'PARTIAL_PASS', 'FAIL', 'NO_COMPONENT_REPORT', 'INVALID_COMPONENT_REPORT'},
            manifest['component_status'])
 
-    # A failing run must name the failing gate; a passing run must not.
+    # A failing run must name the failing gate; a passing run must not. A
+    # PARTIAL_PASS run has no failing gate but must name the gate that is
+    # intentionally partial (Plant/P-10), so the verdict stays explainable.
     component = load(run, 'component_checks.json')
     if component is not None:
         failed = [k for k, v in component['checks'].items()
                   if isinstance(v, dict) and v.get('status') == 'FAIL']
-        if component['status'] == 'PASS':
+        partial = [k for k, v in component['checks'].items()
+                   if isinstance(v, dict) and v.get('status') == 'PARTIAL']
+        if component['status'] in {'PASS', 'PARTIAL_PASS'}:
             expect('passing run has no failed gate', not failed, ','.join(failed))
+            if component['status'] == 'PARTIAL_PASS':
+                expect('partial pass names the partial gate', bool(partial), ','.join(partial))
         else:
             error = component.get('error') or {}
             expect('failing run explains itself or has a FAIL gate',

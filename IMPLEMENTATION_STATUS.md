@@ -34,6 +34,47 @@
 
 
 
+## 2026-11-15 Flight/main 同步与完整验收（RUN_ID `20261115T001844454Z_b362a4c`）
+
+本轮把 Flight_Matalab 从 `1c7a72a` 基线同步到 Flight/main `89b8d07e6272eb7e0454a08b41a170c40e9305c1`（Flight 侧前进约 620 个提交），并解决了 #12、#13 两项长期 BLOCKED 的验收口径问题。
+
+**基线与同步面**
+
+- Flight `abi_lock.h`：144 public types / 993 fields，消息注册表 56 条（`GroundStopCertificate` = 56）；OSQP 源锁升级 schema 2（git-blob 身份 + provenance，42 个文件）；仓库新增 `.gitattributes`（`* text=auto eol=lf`）。
+- `config/flight_baseline.json` 重新录制 499 个输入（`sources_hash_newlines=canonical LF`）；契约仍为 Schema 6.0 / Product-Port `0x00010906`，导航帧 360 B。
+- `external_dependencies.lock.json` 声明契约头 `canonical LF`、OSQP 锁 `canonical CRLF` 与 schema 2；旧锁归档于 `config/dependency_history/`。
+
+**本轮修复**
+
+1. `tools/verify_inputs.py` 改为按 Flight schema-2 锁计算 git-blob id 并逐条校验 provenance，同时断言"锁内文件集合 == 生成目录集合"；固件基线、契约头与源锁统一按声明式换行规则校验，新增 `.gitattributes` 固定 LF。粗 SHA-256 字符串比较时代结束。
+2. **#12 决策 A**：M6 覆盖率判定改为 1 kHz 控制消费点 `used/samples`（PD 回退计入分母）。实测 **95.00%**（26,353 / 27,740），门限仍 90%；整轮口径 81.6% 降级为诊断。`verify_m6_jobs_contract` 扩到 13 项，新增缺计数 / 计数矛盾 / 覆盖率 <90% 三个负向夹具。
+3. **#13**：状态帧 113 → 124 列，新增守卫受理时刻、预测上界、首个零目标回执、回执样本数、守卫状态，以及 `LandedState`、Plant 接地与制导模式。MIL 断言链：permit 撤销 → 证书受理 → SAFE_ACTION 有界 ramp → `ZERO_TARGET_APPLIED` → 守卫锁存 DISARMED → 回执后无推力。
+4. **MIL 场景时序**：34 s 网格、DISARM 在 32 s。当前着陆剖面 25.62 s 触地、28.06 s 满足未改动的 2 s LANDED 驻留；旧 26 s 网格无法完成上锁。
+5. **Flight Host-only 修复**（`b5bcda29`）：`MPC_DIAG_CAPACITY` 1024 → 2048，避免 34 s 场景 1387 个 job 的逐 job 证据被截断；#19 的对账正是这样发现它的。
+6. `tools/run_local_validation.ps1` 在 `-batch` 片段显式 `addpath(tools)`；此前未打开工程的新会话必然报"未定义函数"。
+
+**实测结果**
+
+| 项 | 值 |
+|---|---|
+| `component_status` | **PARTIAL_PASS**（20 项 PASS + Plant PARTIAL，符合设计边界） |
+| MIL | 34 s，最高 2.0829 m，终高 0.0029 m，终速 0.0238 m/s；触地 25.62 s；LANDED 驻留 28.06 s；ARM/TAKEOFF/LAND/DISARM 全部完成 |
+| M6 | 1387/1387 job 求解成功（100%），消费点覆盖 **95.00%**，`coverage_90=PASS` |
+| M7 | 守卫受理 32.021 s，ramp 37 ms（预算 105.5 ms），零目标回执 32.058 s，之后无推力 |
+| ABI（#18） | 144 types / 993 fields / 56 messages，ARM+Host Hash 与 `abi_lock.h` 一致，`spec_mismatches=0` |
+| 归档 | `work/validation/archives/20261115T001844454Z_b362a4c.zip`（51 个证据文件，`source_clean=true`）+ `_ABI.zip` + `_DELIVERY.zip` |
+
+**仍未闭合**
+
+1. **FMS 两阶段 DISARM（#13 剩余）**：物理链路已逐帧证明，但 `fms.c` 仍同步 `DISARMING → DISARMED + COMPLETED`；补"等真实零回执"需异步 ACK 与公共契约变更，待 Flight owner 决策。
+2. **MIL 推力保真度（#21）**：ground stop ramp 期间模型侧推力立即归零（比固件早 37 ms），Plant 未吃到守卫的真实 ramp；需 Flight 增加只读"已施加推力"访问器。
+3. **P-10b 板级链路（#14）**：TIM2 capture、UM982 UART/DMA、`sensor_gnss_poll`、板级时钟仍 NOT_RUN。
+4. **契约 revision 评审（#18 剩余）**：56 条消息注册表下 `0x00010906` 是否递增，待 owner 书面结论。
+
+**边界**
+
+全部结果来自 PC MATLAB/Simulink（R2026b Update 1）+ Windows Host SIL；不构成 H723 实机、PIL/HIL 或实飞验证。Plant 与 P-10 整体仍为 `PARTIAL`。
+
 ## Plant 物理模型第二阶段（代码状态）
 
 以下是独立的 Plant 算法验证代码状态，不计入上表已实测通过的 Host SIL 结果。当前尚未在 MATLAB/Simulink 环境运行本阶段测试。

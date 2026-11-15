@@ -209,15 +209,16 @@ python -B .\tools\verify_inputs.py
 
 | Issue | 当前状态 | 当前约束 |
 |---|---|---|
-| FMAT-0012 | BLOCKED | 488/488 MPC job 求解通过、消费点使用率 95.0%，但现有整轮覆盖率分母为 37.54%；等待用户确认口径，不改 90% 阈值或当前分母 |
-| FMAT-0013 | BLOCKED | Flight M7 执行器侧 Ground Stop 证书、限速降推力和 ZERO_TARGET_APPLIED 回执已有 230/230 Host 检查；但当前 FMS 仍未用该回执驱动状态迁移：fms_build_ground_stop_certificate 要求快照已是 DISARMED，而 PRODUCT_CMD_DISARM 会在同一 handler 内从 DISARMING 直接转 DISARMED 并返回 COMPLETED。需先获用户批准异步 ACK/公共契约变更，再实现真实回执驱动闭环，之后补本项目 Host MIL 端到端断言 |
+| FMAT-0012 | 已按决策 A 落地（口径已变更并记录） | 判定分母改为 1 kHz 控制消费点，实测 95.00%（26,353/27,740），90%/99%/≥100 job 门限未改；整轮口径仅作诊断 |
+| FMAT-0013 | 执行器侧 + Host MIL 端到端已证明；FMS 两阶段 DISARM 待决策 | MIL 逐帧断言：permit 撤销 → 证书受理 32.021 s → 37 ms ramp → 零目标回执 32.058 s → 守卫锁存 DISARMED → 无再输出。补"FMS 等真实回执再转 DISARMED"需异步 ACK/公共契约变更 |
 | FMAT-0014 | IN_PROGRESS | Host 时间服务核心证据与板级 TIM2、真实 UART/DMA、sensor_gnss_poll 全链路证据分开记录；P-10 overall 保持 PARTIAL |
 | FMAT-0015 | FIXED_WAITING_RETEST | 上游数组边界修复及结构化边界测试需随当前固件基线回归确认 |
 | FMAT-0016 / 0017 | VERIFIED（Issue 仍 Open） | 归档分类和 P-10b 数字对账已有历史证据；当前 main 完整复测后再按关闭清单结案 |
-| FMAT-0018 | BLOCKED | Flight/main 比旧 MATLAB 基线前进 618 个提交，契约头/OSQP 锁已更新；GroundStopCertificate 被纳入 registry/ABI inventory（144/993），但 abi_arm/host/compare 仍是旧 143/986、55 messages，当前编译证据不同步。需重跑 ABI 工具并独立审查 revision policy；当前 Flight_Matlab main MATLAB 复测也未执行 |
-| FMAT-0019 | FIXED_WAITING_RETEST | M6 汇总 solved/rejected 现必须与逐 job outcome 数量一致，covered_us 必须等于 solved×20,000 us，job ID 必须完整连续 1..N；新增三项负向夹具，等待 MATLAB 本地执行 |
+| FMAT-0018 | 证据已同步；revision 评审待 owner | ABI 工具重跑并提交：144 types / 993 fields / 56 messages，ARM+Host 与 `abi_lock.h` 一致，`spec_mismatches=0`；`0x00010906` 是否递增需 owner 书面结论 |
+| FMAT-0019 | 已在真实运行中生效 | 1387/1387 逐 job 证据对账通过；此前 1024 条截断正是被该对账抓出，Flight `b5bcda29` 已把 Host 缓冲区扩到 2048 |
+| FMAT-0020 | 已复测通过 | 脏工作树/待归档证据两次都以退出码 1 + 交付包结束；本轮 `PARTIAL_PASS` 包退出码 0；另修复 `-batch` 会话缺 `addpath(tools)` 的真实缺陷 |
 
-因此，本轮 component_checks.json 仍可能因 FMAT-0012 的 coverage_90 返回 FAIL。这是当前未解决的验收合同问题，不代表可以跳过 M6，也不应通过修改门槛来消除。plant_open_loop_report.json.status=PARTIAL 和 P-10 overall PARTIAL 是当前设计边界的如实记录。
+当前基线：RUN_ID `20261115T001844454Z_b362a4c`（Flight `89b8d07e`，Matalab `b362a4c`），`component_status=PARTIAL_PASS`（20 PASS + Plant PARTIAL），M6 `coverage_90=PASS`。plant_open_loop_report.json.status=PARTIAL 和 P-10 overall PARTIAL 是当前设计边界的如实记录。
 
 ### FMAT-0018 的独立 ABI 验证
 
